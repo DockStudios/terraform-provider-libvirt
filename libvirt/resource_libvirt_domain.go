@@ -286,6 +286,11 @@ func resourceLibvirtDomain() *schema.Resource {
 							Optional: true,
 							Default:  "cirrus",
 						},
+						"vram": {
+							Type:     schema.TypeInt,
+							Optional: true,
+							Default:  0,
+						},
 					},
 				},
 			},

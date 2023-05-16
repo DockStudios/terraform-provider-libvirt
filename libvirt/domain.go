@@ -278,10 +278,14 @@ func setCoreOSIgnition(d *schema.ResourceData, domainDef *libvirtxml.Domain, arc
 func setVideo(d *schema.ResourceData, domainDef *libvirtxml.Domain) {
 	prefix := "video.0"
 	if _, ok := d.GetOk(prefix); ok {
+		videoModel := libvirtxml.DomainVideoModel{
+			Type: d.Get(prefix + ".type").(string),
+		}
+		if d.Get(prefix+".vram").(uint) != 0 {
+			videoModel.VRam = d.Get(prefix + ".vram").(uint)
+		}
 		domainDef.Devices.Videos = append(domainDef.Devices.Videos, libvirtxml.DomainVideo{
-			Model: libvirtxml.DomainVideoModel{
-				Type: d.Get(prefix + ".type").(string),
-			},
+			Model: videoModel,
 		})
 	}
 }
