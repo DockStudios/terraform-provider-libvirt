@@ -988,6 +988,16 @@ func resourceLibvirtDomainRead(ctx context.Context, d *schema.ResourceData, meta
 		return addrs
 	}
 
+	var videoConfigs []map[string]interface{}
+	for _, videoConfigDef := range domainDef.Devices.Videos {
+		VideoConfig := map[string]interface{}{
+			"type": videoConfigDef.Model.Type,
+			"vram": int(videoConfigDef.Model.VRam),
+		}
+		videoConfigs = append(videoConfigs, VideoConfig)
+	}
+	d.Set("video", videoConfigs)
+
 	var netIfaces []map[string]interface{}
 	for i, networkInterfaceDef := range domainDef.Devices.Interfaces {
 		// we need it to read old values
