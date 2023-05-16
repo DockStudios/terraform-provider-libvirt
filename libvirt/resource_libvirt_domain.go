@@ -1060,6 +1060,7 @@ func resourceLibvirtDomainRead(ctx context.Context, d *schema.ResourceData, meta
 	}
 	log.Printf("[DEBUG] read: ifaces for '%s':\n%s", domainDef.Name, spew.Sdump(netIfaces))
 
+	// @TODO Should this not always set network interfaces?!
 	if len(netIfaces) > 0 {
 		d.Set("network_interface", netIfaces)
 	}
