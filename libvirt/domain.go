@@ -281,8 +281,8 @@ func setVideo(d *schema.ResourceData, domainDef *libvirtxml.Domain) {
 		videoModel := libvirtxml.DomainVideoModel{
 			Type: d.Get(prefix + ".type").(string),
 		}
-		if d.Get(prefix+".vram").(uint) != 0 {
-			videoModel.VRam = d.Get(prefix + ".vram").(uint)
+		if d.Get(prefix+".vram").(int) != 0 {
+			videoModel.VRam = uint(d.Get(prefix + ".vram").(int))
 		}
 		domainDef.Devices.Videos = append(domainDef.Devices.Videos, libvirtxml.DomainVideo{
 			Model: videoModel,
