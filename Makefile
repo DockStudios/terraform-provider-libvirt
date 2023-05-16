@@ -1,52 +1,33 @@
-LDFLAGS += -X version.ProviderVersion=$$(git describe --always --abbrev=40 --dirty)
+TEST?=$$(go list ./... | grep -v 'vendor')
+HOSTNAME=github.com
+NAMESPACE=matthewjohn
+NAME=libvirt
 
-# default  args for tests
-TEST_ARGS_DEF := -covermode=count -coverprofile=profile.cov
+:w
+:q
+:w
+:q
+:q!
+BINARY=terraform-provider-${NAME}
+VERSION=0.0.1
+OS_ARCH=linux_amd64
 
-default: build
+default: install
 
-terraform-provider-libvirt:
-	go build -ldflags "${LDFLAGS}"
+build:
+	go build -o ${BINARY}
 
-build: terraform-provider-libvirt
+release:
+	goreleaser release --rm-dist --snapshot --skip-publish  --skip-sign
 
-install:
-	go install -ldflags "${LDFLAGS}"
+install: build
+	mkdir -p ~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
+	mv ${BINARY} ~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
 
-# unit tests
-# usage:
-# - run all the unit tests: make test
-# - run some particular test: make test TEST_ARGS="-run TestAccLibvirtDomain_Cpu"
-test:
-	go test -v $(TEST_ARGS_DEF) $(TEST_ARGS) ./libvirt
+test: 
+	go test -i $(TEST) || exit 1                                                   
+	echo $(TEST) | xargs -t -n4 go test $(TESTARGS) -timeout=30s -parallel=4                    
 
-# acceptance tests
-# usage:
-#
-# - run all the acceptance tests:
-#   make testacc
-#
-# - run some particular test:
-#   make testacc TEST_ARGS="-run TestAccLibvirtDomain_Cpu"
-#
-# - run all the network test with a verbose loglevel:
-#   TF_LOG=DEBUG make testacc TEST_ARGS="-run TestAccLibvirtNet*"
-#
-testacc:
-	./travis/run-tests-acceptance $(TEST_ARGS)
+testacc: 
+	TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout 120m   
 
-golangcilint:
-	golangci-lint run
-
-tflint:
-	terraform fmt -write=false -check=true -diff=true examples/
-
-lint: golangcilint tflint
-
-clean:
-	rm -f terraform-provider-libvirt
-
-cleanup:
-	./travis/cleanup.sh
-
-.PHONY: build install test testacc tflint golangcilint lint terraform-provider-libvirt
