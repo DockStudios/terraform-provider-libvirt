@@ -72,9 +72,12 @@ func domainWaitForLeases(ctx context.Context, virConn *libvirt.Libvirt, domain l
 		Delay:      resourceStateDelay,
 	}
 
-	_, err := stateConf.WaitForStateContext(ctx)
+	if _, err := stateConf.WaitForStateContext(ctx); err != nil {
+		return err
+	}
+
 	log.Print("[DEBUG] wait-for-leases was successful")
-	return err
+	return nil
 }
 
 func domainIfaceHasAddress(virConn *libvirt.Libvirt, domain libvirt.Domain,
@@ -91,12 +94,16 @@ func domainIfaceHasAddress(virConn *libvirt.Libvirt, domain libvirt.Domain,
 	log.Printf("[DEBUG] waiting for network address for iface=%s\n", mac)
 	ifacesWithAddr, err := domainGetIfacesInfo(virConn, domain, rd)
 	if err != nil {
+		if strings.Contains(err.Error(), "Guest agent is not responding: QEMU guest agent is not connected") {
+			log.Print("[DEBUG] could not retrieve interface addresses: domain qemu guest agent is not yet ready")
+			return false, false, nil
+		}
 		return false, false, fmt.Errorf("error retrieving interface addresses: %w", err)
 	}
 	log.Printf("[DEBUG] ifaces with addresses: %+v\n", ifacesWithAddr)
 
 	for _, ifaceWithAddr := range ifacesWithAddr {
-		if len(ifaceWithAddr.Hwaddr) > 0 && (mac == strings.ToUpper(ifaceWithAddr.Hwaddr[0])) {
+		if len(ifaceWithAddr.Hwaddr) > 0 && (mac == strings.ToUpper(ifaceWithAddr.Hwaddr[0])) && len(ifaceWithAddr.Addrs) > 0 {
 			log.Printf("[DEBUG] found IPs for MAC=%+v: %+v\n", mac, ifaceWithAddr.Addrs)
 			return true, false, nil
 		}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -73,6 +74,12 @@ func resourceLibvirtDomain() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
+			},
+			"type": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Default:  "kvm",
 			},
 			"nvram": {
 				Type:     schema.TypeList,
@@ -513,6 +520,12 @@ func resourceLibvirtDomainCreate(ctx context.Context, d *schema.ResourceData, me
 	domainDef.OS.Type.Machine = d.Get("machine").(string)
 	domainDef.Devices.Emulator = d.Get("emulator").(string)
 
+	if v := os.Getenv("TERRAFORM_LIBVIRT_TEST_DOMAIN_TYPE"); v != "" {
+		domainDef.Type = v
+	} else {
+		domainDef.Type = d.Get("type").(string)
+	}
+
 	arch, err := getHostArchitecture(virConn)
 	if err != nil {
 		return diag.Errorf("error retrieving host architecture: %s", err)
@@ -598,7 +611,7 @@ func resourceLibvirtDomainCreate(ctx context.Context, d *schema.ResourceData, me
 		err = domainWaitForLeases(ctx, virConn, domain, waitForLeases, d.Timeout(schema.TimeoutCreate), d)
 		if err != nil {
 			ipNotFoundMsg := "Please check following: \n" +
-				"1) is the domain running proplerly? \n" +
+				"1) is the domain running properly? \n" +
 				"2) has the network interface an IP address? \n" +
 				"3) Networking issues on your libvirt setup? \n " +
 				"4) is DHCP enabled on this Domain's network? \n" +
