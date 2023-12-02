@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -461,6 +462,24 @@ func setConsoles(d *schema.ResourceData, domainDef *libvirtxml.Domain) {
 			}
 		}
 		domainDef.Devices.Consoles = append(domainDef.Devices.Consoles, console)
+	}
+}
+
+func setRngDevices(d *schema.ResourceData, domainDef *libvirtxml.Domain) {
+
+	rngDev := os.Getenv("TF_LIBVIRT_RNG_DEV")
+	if rngDev == "" {
+		rngDev = d.Get("rng_random_source").(string)
+	}
+	if rngDev != "" {
+		domainDef.Devices.RNGs = []libvirtxml.DomainRNG{
+			{
+				Model: "virtio",
+				Backend: &libvirtxml.DomainRNGBackend{
+					Random: &libvirtxml.DomainRNGBackendRandom{Device: rngDev},
+				},
+			},
+		}
 	}
 }
 
