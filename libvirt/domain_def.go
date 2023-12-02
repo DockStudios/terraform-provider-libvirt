@@ -131,6 +131,18 @@ func newDomainDefForConnection(virConn *libvirt.Libvirt, rd *schema.ResourceData
 		return d, err
 	}
 
+	rndSource, rndSourceOk := rd.GetOk("rng_random_source")
+	// If random source has been set, update each of the sources to
+	// the random source
+	if rndSourceOk {
+		for itx := range d.Devices.RNGs {
+			d.Devices.RNGs[itx].Backend.Random.Device = rndSource.(string)
+		}
+	} else {
+		// Otherwise remove the RNG devices
+		d.Devices.RNGs = []libvirtxml.DomainRNG{}
+	}
+
 	if emulator, ok := rd.GetOk("emulator"); ok {
 		d.Devices.Emulator = emulator.(string)
 	} else {

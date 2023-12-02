@@ -81,6 +81,12 @@ func resourceLibvirtDomain() *schema.Resource {
 				ForceNew: true,
 				Default:  "kvm",
 			},
+			"rng_random_source": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  "/dev/urandom",
+				ForceNew: true,
+			},
 			"nvram": {
 				Type:     schema.TypeList,
 				Optional: true,
