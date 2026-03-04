@@ -139,6 +139,25 @@ func getCloudInitVolumeKeyFromTerraformID(id string) (string, error) {
 
 // Create the ISO holding all the cloud-init data
 // Returns a string with the full path to the ISO file.
+//
+// The generated ISO 9660 image contains the three cloud-init data files
+// (user-data, meta-data, network-config) with volume identifier "cidata".
+// Unlike the previous mkisofs-based approach, this image:
+//   - Does NOT include Joliet extensions (isoinfo reports "Unable to find Joliet SVD")
+//   - Does NOT include Rock Ridge extensions
+//   - Does NOT include mkisofs default padding (~150 sectors)
+//
+// These omissions reduce the image size significantly (e.g. 45 KB vs ~370 KB).
+// All three are mkisofs defaults and are NOT required for cloud-init:
+// the Linux kernel's isofs driver reads filenames from the primary ISO 9660
+// directory, where the files are stored with their full lowercase names.
+//
+// To compare old (mkisofs) and new images with isoinfo:
+//
+//	isoinfo -d -i <file.iso>          # volume descriptor info
+//	isoinfo -l -i <file.iso>          # list files via ISO 9660 primary directory
+//	isoinfo -J -l -i <file.iso>       # list files via Joliet (old only)
+//	isoinfo -R -l -i <file.iso>       # list files via Rock Ridge (old only)
 func (ci *defCloudInit) createISO() (string, error) {
 	log.Print("Creating new ISO")
 

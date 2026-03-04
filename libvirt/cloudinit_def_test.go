@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hooklift/iso9660"
@@ -134,6 +135,86 @@ func TestCloudInitISOContents(t *testing.T) {
 		t.Error("network-config not found in ISO")
 	} else if got != networkConfig {
 		t.Errorf("network-config mismatch: got %q, want %q", got, networkConfig)
+	}
+}
+
+// TestCloudInitISOVolumeLabel verifies the generated ISO has the correct
+// volume label "cidata", which cloud-init uses to locate the NoCloud data source.
+func TestCloudInitISOVolumeLabel(t *testing.T) {
+	ci := defCloudInit{
+		Name:          "test.iso",
+		UserData:      "#cloud-config\nhostname: testhost\n",
+		MetaData:      "instance-id: test-01\nlocal-hostname: testhost\n",
+		NetworkConfig: "version: 2\n",
+	}
+
+	isoPath, err := ci.createISO()
+	if err != nil {
+		t.Fatalf("Unexpected error creating ISO: %v", err)
+	}
+	defer os.RemoveAll(filepath.Dir(isoPath))
+
+	isoFile, err := os.Open(isoPath)
+	if err != nil {
+		t.Fatalf("Cannot open ISO: %v", err)
+	}
+	defer isoFile.Close()
+
+	// Read the Primary Volume Descriptor at sector 16 (byte 32768).
+	// The Volume Identifier field is at PVD bytes 40-71 (32 bytes, space-padded).
+	pvd := make([]byte, 2048)
+	if _, err := isoFile.ReadAt(pvd, 16*2048); err != nil {
+		t.Fatalf("Cannot read PVD: %v", err)
+	}
+
+	const wantLabel = "cidata"
+	gotLabel := strings.TrimRight(string(pvd[40:72]), " ")
+	if gotLabel != wantLabel {
+		t.Errorf("ISO volume label = %q, want %q", gotLabel, wantLabel)
+	}
+}
+
+// TestCloudInitISOReadback verifies the full round-trip: content written via
+// createISO() can be read back correctly through the provider's own reading
+// path (setCloudInitDataFromExistingCloudInitDisk).
+func TestCloudInitISOReadback(t *testing.T) {
+	wantUserData := "#cloud-config\nhostname: testhost\n"
+	wantMetaData := "instance-id: test-01\nlocal-hostname: testhost\n"
+	wantNetConfig := "version: 2\nethernets:\n  eth0:\n    dhcp4: true\n"
+
+	ci := defCloudInit{
+		Name:          "test.iso",
+		UserData:      wantUserData,
+		MetaData:      wantMetaData,
+		NetworkConfig: wantNetConfig,
+	}
+
+	isoPath, err := ci.createISO()
+	if err != nil {
+		t.Fatalf("Unexpected error creating ISO: %v", err)
+	}
+	defer os.RemoveAll(filepath.Dir(isoPath))
+
+	isoFile, err := os.Open(isoPath)
+	if err != nil {
+		t.Fatalf("Cannot open ISO file: %v", err)
+	}
+	defer isoFile.Close()
+
+	// Simulate what the provider does when refreshing state from an existing volume.
+	var readBack defCloudInit
+	if err := readBack.setCloudInitDataFromExistingCloudInitDisk(isoFile); err != nil {
+		t.Fatalf("setCloudInitDataFromExistingCloudInitDisk error: %v", err)
+	}
+
+	if readBack.UserData != wantUserData {
+		t.Errorf("UserData mismatch:\n got: %q\nwant: %q", readBack.UserData, wantUserData)
+	}
+	if readBack.MetaData != wantMetaData {
+		t.Errorf("MetaData mismatch:\n got: %q\nwant: %q", readBack.MetaData, wantMetaData)
+	}
+	if readBack.NetworkConfig != wantNetConfig {
+		t.Errorf("NetworkConfig mismatch:\n got: %q\nwant: %q", readBack.NetworkConfig, wantNetConfig)
 	}
 }
 
