@@ -9,13 +9,13 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	libvirt "github.com/digitalocean/go-libvirt"
 	"github.com/google/uuid"
 	"github.com/hooklift/iso9660"
+	isowriter "github.com/kdomanski/iso9660"
 )
 
 const userDataFileName string = "user-data"
@@ -141,58 +141,41 @@ func getCloudInitVolumeKeyFromTerraformID(id string) (string, error) {
 // Returns a string with the full path to the ISO file.
 func (ci *defCloudInit) createISO() (string, error) {
 	log.Print("Creating new ISO")
-	tmpDir, err := ci.createFiles()
+
+	writer, err := isowriter.NewWriter()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error creating ISO writer: %w", err)
+	}
+	defer writer.Cleanup()
+
+	for _, f := range []struct{ name, content string }{
+		{userDataFileName, ci.UserData},
+		{metaDataFileName, ci.MetaData},
+		{networkConfigFileName, ci.NetworkConfig},
+	} {
+		if err := writer.AddFile(strings.NewReader(f.content), f.name); err != nil {
+			return "", fmt.Errorf("error adding %s to ISO: %w", f.name, err)
+		}
 	}
 
-	isoDestination := filepath.Join(tmpDir, ci.Name)
-	cmd := exec.Command(
-		"mkisofs",
-		"-output",
-		isoDestination,
-		"-volid",
-		"cidata",
-		"-joliet",
-		"-rock",
-		filepath.Join(tmpDir, userDataFileName),
-		filepath.Join(tmpDir, metaDataFileName),
-		filepath.Join(tmpDir, networkConfigFileName))
-
-	log.Printf("About to execute cmd: %+v", cmd)
-	if err = cmd.Run(); err != nil {
-		return "", fmt.Errorf("error while starting the creation of CloudInit's ISO image: %w", err)
-	}
-	log.Printf("ISO created at %s", isoDestination)
-
-	return isoDestination, nil
-}
-
-// write user-data,  meta-data network-config in tmp files and dedicated directory
-// Returns a string containing the name of the temporary directory and an error
-// object.
-func (ci *defCloudInit) createFiles() (string, error) {
-	log.Print("Creating ISO contents")
 	tmpDir, err := os.MkdirTemp("", "cloudinit")
 	if err != nil {
 		return "", fmt.Errorf("cannot create tmp directory for cloudinit ISO generation: %w", err)
 	}
-	// user-data
-	if err = os.WriteFile(filepath.Join(tmpDir, userDataFileName), []byte(ci.UserData), os.ModePerm); err != nil {
-		return "", fmt.Errorf("error while writing user-data to file: %w", err)
+
+	isoDestination := filepath.Join(tmpDir, ci.Name)
+	outputFile, err := os.OpenFile(isoDestination, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+	if err != nil {
+		return "", fmt.Errorf("error creating ISO file: %w", err)
 	}
-	// meta-data
-	if err = os.WriteFile(filepath.Join(tmpDir, metaDataFileName), []byte(ci.MetaData), os.ModePerm); err != nil {
-		return "", fmt.Errorf("error while writing meta-data to file: %w", err)
-	}
-	// network-config
-	if err = os.WriteFile(filepath.Join(tmpDir, networkConfigFileName), []byte(ci.NetworkConfig), os.ModePerm); err != nil {
-		return "", fmt.Errorf("error while writing network-config to file: %w", err)
+	defer outputFile.Close()
+
+	if err := writer.WriteTo(outputFile, "cidata"); err != nil {
+		return "", fmt.Errorf("error writing ISO image: %w", err)
 	}
 
-	log.Print("ISO contents created")
-
-	return tmpDir, nil
+	log.Printf("ISO created at %s", isoDestination)
+	return isoDestination, nil
 }
 
 // Creates a new defCloudInit object starting from a ISO volume handled by
@@ -256,15 +239,14 @@ func (ci *defCloudInit) setCloudInitDataFromExistingCloudInitDisk(isoFile *os.Fi
 		if err != nil {
 			return err
 		}
-		// the following filenames need to be like this because in the ios9660 reader
-		// joliet is not supported. https://github.com/hooklift/iso9660/blob/master/README.md#not-supported
-		if file.Name() == "/user_dat." {
+		// Support both ISO filenames written by mkisofs (ISO 9660 8.3 format, e.g. /user_dat.)
+		// and filenames written by the pure-Go ISO writer (full name, e.g. /user-data).
+		switch file.Name() {
+		case "/user_dat.", "/user-data":
 			ci.UserData = string(dataBytes)
-		}
-		if file.Name() == "/meta_dat." {
+		case "/meta_dat.", "/meta-data":
 			ci.MetaData = string(dataBytes)
-		}
-		if file.Name() == "/network_." {
+		case "/network_.", "/network-config":
 			ci.NetworkConfig = string(dataBytes)
 		}
 	}
